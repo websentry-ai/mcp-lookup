@@ -31,6 +31,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_get.add_argument("--version", default="latest", help="Registry version (ignored by Smithery).")
     p_get.add_argument("--pretty", action="store_true")
     p_get.add_argument("--with-icon", action="store_true")
+    p_get.add_argument("--no-enrich", action="store_true", help="Skip Smithery tools enrichment when URL matches.")
 
     p_icon = sub.add_parser("icon", help="Print the derived icon URL for a server.")
     p_icon.add_argument("query")
@@ -56,7 +57,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0 if results else 1
 
         if args.command == "get":
-            entry = agg.get(args.query, version=args.version, source=args.source)
+            entry = agg.get(args.query, version=args.version, source=args.source, enrich=not args.no_enrich)
             if not entry:
                 print(f"No server found for: {args.query}", file=sys.stderr)
                 return 1
@@ -133,8 +134,16 @@ def _print_entry(entry: Dict[str, Any]) -> None:
     for conn in s.get("connections", []) or []:
         url = conn.get("deploymentUrl") or conn.get("url")
         print(f"connection:  {conn.get('type')} {url}")
-    tools = s.get("tools") or []
-    if tools:
+    enriched_by = entry.get("_enriched_by")
+    tools = entry.get("tools") or s.get("tools") or []
+    if tools and enriched_by:
+        match = entry.get("_enrichment_match") or []
+        print(f"tools:       {len(tools)}  (enriched via {enriched_by} on {', '.join(match)})")
+        for t in tools[:5]:
+            print(f"  - {t.get('name')}: {(t.get('description') or '').splitlines()[0][:70]}")
+        if len(tools) > 5:
+            print(f"  ... {len(tools) - 5} more")
+    elif tools:
         print(f"tools:       {len(tools)}")
         for t in tools[:5]:
             print(f"  - {t.get('name')}: {(t.get('description') or '').splitlines()[0][:70]}")
