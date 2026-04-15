@@ -3,6 +3,7 @@ import json
 import sys
 from typing import Any, Dict, List, Optional
 
+from .icon import derive_icon_url
 from .registry import DEFAULT_BASE_URL, DEFAULT_TIMEOUT, RegistryClient, RegistryError
 
 
@@ -17,11 +18,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_search.add_argument("query", help="Server name fragment or repository URL.")
     p_search.add_argument("--limit", type=int, default=10)
     p_search.add_argument("--json", action="store_true", help="Emit full JSON list.")
+    p_search.add_argument("--with-icon", action="store_true", help="Inject derived icon_url into each record.")
 
     p_get = sub.add_parser("get", help="Get one server by name or repository URL.")
     p_get.add_argument("query", help="Exact server name or repository URL.")
     p_get.add_argument("--version", default="latest", help="Version (default: latest). Ignored for URL lookup.")
     p_get.add_argument("--pretty", action="store_true", help="Pretty-print summary instead of full JSON.")
+    p_get.add_argument("--with-icon", action="store_true", help="Inject derived icon_url into the record.")
+
+    p_icon = sub.add_parser("icon", help="Print the derived icon URL for a server.")
+    p_icon.add_argument("query", help="Server name or repository URL.")
 
     args = parser.parse_args(argv)
     client = RegistryClient(base_url=args.base_url, timeout=args.timeout)
@@ -29,6 +35,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if args.command == "search":
             results = client.search(args.query, limit=args.limit)
+            if args.with_icon:
+                for r in results:
+                    r["icon_url"] = derive_icon_url(r)
             if args.json:
                 json.dump(results, sys.stdout, indent=2)
                 sys.stdout.write("\n")
@@ -41,11 +50,24 @@ def main(argv: Optional[List[str]] = None) -> int:
             if not entry:
                 print(f"No server found for: {args.query}", file=sys.stderr)
                 return 1
+            if args.with_icon:
+                entry["icon_url"] = derive_icon_url(entry)
             if args.pretty:
                 _print_entry(entry)
             else:
                 json.dump(entry, sys.stdout, indent=2)
                 sys.stdout.write("\n")
+            return 0
+
+        if args.command == "icon":
+            entry = client.get(args.query)
+            if not entry:
+                print(f"No server found for: {args.query}", file=sys.stderr)
+                return 1
+            url = derive_icon_url(entry)
+            if not url:
+                return 1
+            print(url)
             return 0
     except RegistryError as e:
         print(f"registry error: {e}", file=sys.stderr)
@@ -83,6 +105,9 @@ def _print_entry(entry: Dict[str, Any]) -> None:
         print(f"package:     {pkg.get('registry')}:{pkg.get('name')}@{pkg.get('version')}")
     for remote in s.get("remotes", []) or []:
         print(f"remote:      {remote.get('type')} {remote.get('url')}")
+    icon = entry.get("icon_url") or derive_icon_url(entry)
+    if icon:
+        print(f"icon:        {icon}")
 
 
 if __name__ == "__main__":
