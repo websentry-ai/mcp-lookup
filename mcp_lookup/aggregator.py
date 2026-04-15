@@ -8,6 +8,8 @@ from .smithery import SmitheryClient
 
 SOURCE_PRIORITY = ("registry", "smithery", "pulsemcp")
 COMMON_SUBDOMAINS = {"mcp", "api", "www", "app", "server", "hub"}
+SHARED_HOSTS = {"github.com", "gitlab.com", "bitbucket.org", "codeberg.org"}
+CATALOG_HOST_ROOTS = {"smithery.ai", "pulsemcp.com", "run.tools", "modelcontextprotocol.io"}
 
 
 class Aggregator:
@@ -162,22 +164,44 @@ def _url_hosts(entry: Dict[str, Any]) -> Set[str]:
     urls.append(server.get("external_url"))
     urls.append(server.get("url"))
 
-    hosts: Set[str] = set()
+    identities: Set[str] = set()
     for u in urls:
-        host = _normalize_host(u or "")
-        if host:
-            hosts.add(host)
-    return hosts
+        ident = _url_identity(u or "")
+        if ident:
+            identities.add(ident)
+
+    shared_hosts_on_entry = {h for h in (_raw_host(u or "") for u in urls) if h in SHARED_HOSTS}
+    qname = server.get("qualifiedName") or ""
+    if shared_hosts_on_entry and "/" in qname:
+        namespace = qname.split("/", 1)[0].lower()
+        for sh in shared_hosts_on_entry:
+            identities.add(f"{sh}/{namespace}")
+
+    return identities
 
 
-def _normalize_host(url: str) -> Optional[str]:
+def _url_identity(url: str) -> Optional[str]:
     if not url:
         return None
     parsed = urllib.parse.urlparse(url if "://" in url else f"https://{url}")
     host = (parsed.netloc or "").lower()
     if not host:
         return None
-    parts = host.split(".")
-    if len(parts) >= 3 and parts[0] in COMMON_SUBDOMAINS:
-        host = ".".join(parts[1:])
+    if host in SHARED_HOSTS:
+        parts = [p for p in parsed.path.split("/") if p]
+        if not parts:
+            return None
+        return f"{host}/{parts[0].lower()}"
+    labels = host.split(".")
+    if len(labels) >= 3 and labels[0] in COMMON_SUBDOMAINS:
+        host = ".".join(labels[1:])
+    if host in CATALOG_HOST_ROOTS or any(host.endswith(f".{r}") for r in CATALOG_HOST_ROOTS):
+        return None
     return host
+
+
+def _raw_host(url: str) -> Optional[str]:
+    if not url:
+        return None
+    parsed = urllib.parse.urlparse(url if "://" in url else f"https://{url}")
+    return (parsed.netloc or "").lower() or None
