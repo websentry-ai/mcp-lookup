@@ -1,6 +1,12 @@
-# mcp-lookup
+<p align="center">
+  <img src="https://raw.githubusercontent.com/websentry-ai/mcp-lookup/main/assets/logo.svg" alt="mcp-lookup logo" width="96" height="96">
+</p>
 
-Lookup MCP servers across the [official MCP Registry](https://registry.modelcontextprotocol.io), [Smithery](https://smithery.ai), and [PulseMCP](https://pulsemcp.com) from one CLI and Python library. Stdlib-only, no runtime dependencies.
+<h1 align="center">mcp-lookup</h1>
+
+<p align="center">
+  Lookup MCP servers across the <a href="https://registry.modelcontextprotocol.io">official MCP Registry</a>, <a href="https://smithery.ai">Smithery</a>, and <a href="https://pulsemcp.com">PulseMCP</a> from one CLI and Python library. Stdlib-only, no runtime dependencies.
+</p>
 
 ## Why
 
