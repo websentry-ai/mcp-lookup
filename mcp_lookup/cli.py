@@ -5,10 +5,11 @@ from typing import Any, Dict, List, Optional
 
 from .aggregator import Aggregator
 from .icon import derive_icon_url
+from .pulsemcp import PulseMCPClient
 from .registry import DEFAULT_BASE_URL, DEFAULT_TIMEOUT, RegistryClient, RegistryError
 from .smithery import SmitheryClient
 
-SOURCES = ("all", "registry", "smithery")
+SOURCES = ("all", "registry", "smithery", "pulsemcp")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -38,6 +39,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     agg = Aggregator(
         registry=RegistryClient(base_url=args.base_url, timeout=args.timeout),
         smithery=SmitheryClient(timeout=args.timeout),
+        pulsemcp=PulseMCPClient(timeout=args.timeout),
     )
 
     try:
@@ -93,8 +95,14 @@ def _print_search(results: List[Dict[str, Any]]) -> None:
         s = entry.get("server", {})
         name = s.get("name") or s.get("qualifiedName") or "?"
         version = s.get("version") or ""
-        desc = (s.get("description") or "").splitlines()[0][:100]
-        repo = (s.get("repository") or {}).get("url") or s.get("homepage") or ""
+        desc = (s.get("description") or s.get("short_description") or "").splitlines()[0][:100]
+        repo = (
+            (s.get("repository") or {}).get("url")
+            or s.get("homepage")
+            or s.get("source_code_url")
+            or s.get("external_url")
+            or ""
+        )
         print(f"[{source}] {name}" + (f"  v{version}" if version else ""))
         if repo:
             print(f"  repo: {repo}")

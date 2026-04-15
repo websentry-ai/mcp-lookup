@@ -13,12 +13,12 @@ def derive_icon_url(entry: Dict[str, Any]) -> Optional[str]:
     if server.get("iconUrl"):
         return server["iconUrl"]
 
-    repo_url = (server.get("repository") or {}).get("url") or ""
+    repo_url = (server.get("repository") or {}).get("url") or server.get("source_code_url") or ""
     owner = _github_owner(repo_url)
     if owner:
         return GITHUB_AVATAR_TEMPLATE.format(owner=owner)
 
-    homepage = server.get("homepage") or ""
+    homepage = server.get("homepage") or server.get("external_url") or ""
     host = _host(homepage)
     if host:
         return FAVICON_TEMPLATE.format(host=_prefer_root(host))
