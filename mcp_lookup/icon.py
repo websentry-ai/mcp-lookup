@@ -10,10 +10,18 @@ COMMON_SUBDOMAINS = {"mcp", "api", "www", "app", "server", "hub"}
 def derive_icon_url(entry: Dict[str, Any]) -> Optional[str]:
     server = entry.get("server", {}) if isinstance(entry, dict) else {}
 
+    if server.get("iconUrl"):
+        return server["iconUrl"]
+
     repo_url = (server.get("repository") or {}).get("url") or ""
     owner = _github_owner(repo_url)
     if owner:
         return GITHUB_AVATAR_TEMPLATE.format(owner=owner)
+
+    homepage = server.get("homepage") or ""
+    host = _host(homepage)
+    if host:
+        return FAVICON_TEMPLATE.format(host=_prefer_root(host))
 
     for remote in server.get("remotes", []) or []:
         host = _host(remote.get("url") or "")
