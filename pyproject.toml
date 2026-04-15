@@ -1,6 +1,6 @@
 [project]
 name = "mcp-lookup"
-version = "0.3.0"
+version = "0.4.0"
 description = "Lookup MCP servers in the official MCP Registry by name or URL."
 readme = "README.md"
 license = { file = "LICENSE" }
