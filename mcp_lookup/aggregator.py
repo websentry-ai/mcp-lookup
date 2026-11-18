@@ -1,9 +1,10 @@
+import threading
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 from .pulsemcp import PulseMCPClient
-from .registry import RegistryClient, RegistryError
+from .registry import CredentialsRequiredError, RegistryClient, RegistryError
 from .smithery import SmitheryClient
 
 SOURCE_PRIORITY = ("registry", "smithery", "pulsemcp")
@@ -19,13 +20,17 @@ class Aggregator:
         smithery: Optional[SmitheryClient] = None,
         pulsemcp: Optional[PulseMCPClient] = None,
     ):
-        self.clients = {
+        self.clients: Dict[str, Union[RegistryClient, SmitheryClient, PulseMCPClient]] = {
             "registry": registry or RegistryClient(),
             "smithery": smithery or SmitheryClient(),
             "pulsemcp": pulsemcp or PulseMCPClient(),
         }
+        # Populated during search/get with CredentialsRequiredError messages keyed by source name.
+        self.credential_warnings: Dict[str, str] = {}
+        self._warnings_lock = threading.Lock()
 
     def search(self, query: str, limit: int = 10, source: str = "all") -> List[Dict[str, Any]]:
+        self.credential_warnings = {}  # reset before each top-level call
         sources = self._selected(source)
         results_by_source: Dict[str, List[Dict[str, Any]]] = {}
 
@@ -51,6 +56,7 @@ class Aggregator:
         source: str = "all",
         enrich: bool = True,
     ) -> Optional[Dict[str, Any]]:
+        self.credential_warnings = {}  # reset before each top-level call
         sources = self._selected(source)
 
         tasks: Dict[Any, Any] = {}
@@ -109,21 +115,35 @@ class Aggregator:
         return [source] if source in self.clients else []
 
     def _safe_search(self, source: str, query: str, limit: int) -> List[Dict[str, Any]]:
-        return _swallow(lambda: self.clients[source].search(query, limit=limit), default=[])
+        result, warn = _swallow(lambda: self.clients[source].search(query, limit=limit), default=[])
+        if warn:
+            with self._warnings_lock:
+                self.credential_warnings[source] = warn
+        return result
 
     def _safe_get(self, source: str, query: str, version: str) -> Optional[Dict[str, Any]]:
         client = self.clients[source]
-        if source == "registry":
-            return _swallow(lambda: client.get(query, version=version), default=None)
-        return _swallow(lambda: client.get(query), default=None)
+        if isinstance(client, RegistryClient):
+            result, warn = _swallow(lambda: client.get(query, version=version), default=None)
+        else:
+            result, warn = _swallow(lambda: client.get(query), default=None)
+        if warn:
+            with self._warnings_lock:
+                self.credential_warnings[source] = warn
+        return result
 
-def _swallow(fn: Callable[[], Any], default: Any) -> Any:
+def _swallow(fn: Callable[[], Any], default: Any):
+    """Call fn(), return (value, warning_message).
+
+    On CredentialsRequiredError returns (default, str(error)).
+    On any other exception returns (default, None).
+    """
     try:
-        return fn()
-    except RegistryError:
-        return default
+        return fn(), None
+    except CredentialsRequiredError as e:
+        return default, str(e)
     except Exception:
-        return default
+        return default, None
 
 
 def _dedupe(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

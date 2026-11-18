@@ -4,21 +4,29 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
 
-from .registry import USER_AGENT, RegistryError, classify_input
+from .registry import USER_AGENT, CredentialsRequiredError, RegistryError, classify_input
 
-DEFAULT_BASE_URL = "https://api.pulsemcp.com/v0beta"
+DEFAULT_BASE_URL = "https://api.pulsemcp.com/v0.1"
 DEFAULT_TIMEOUT = 15
 
 
 class PulseMCPClient:
-    def __init__(self, base_url: str = DEFAULT_BASE_URL, timeout: int = DEFAULT_TIMEOUT):
+    def __init__(
+        self,
+        base_url: str = DEFAULT_BASE_URL,
+        timeout: int = DEFAULT_TIMEOUT,
+        api_key: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.api_key = api_key
+        self.tenant_id = tenant_id
 
     def search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         kind, value = classify_input(query)
         q = _query_from_url(value) if kind == "url" else value
-        params = {"query": q, "count_per_page": str(max(1, min(limit, 50)))}
+        params = {"search": q, "count_per_page": str(max(1, min(limit, 50)))}
         data = self._request(f"/servers?{urllib.parse.urlencode(params)}")
         servers = data.get("servers", []) or []
         if kind == "url":
@@ -33,13 +41,23 @@ class PulseMCPClient:
 
     def _request(self, path: str) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
-        req = urllib.request.Request(
-            url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
-        )
+        headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+        if self.tenant_id:
+            headers["X-Tenant-ID"] = self.tenant_id
+        req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = resp.read()
         except urllib.error.HTTPError as e:
+            if e.code == 401:
+                raise CredentialsRequiredError(
+                    "pulsemcp",
+                    "PulseMCP requires an API key (--pulsemcp-api-key) and tenant ID "
+                    "(--pulsemcp-tenant-id). Get credentials at https://www.pulsemcp.com/api-access "
+                    "or contact hello@pulsemcp.com.",
+                ) from e
             raise RegistryError(f"HTTP {e.code} for {url}: {e.reason}") from e
         except urllib.error.URLError as e:
             raise RegistryError(f"Network error for {url}: {e.reason}") from e

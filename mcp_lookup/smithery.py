@@ -19,7 +19,7 @@ class SmitheryClient:
     def search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         kind, value = classify_input(query)
         q = _host_for_url(value) if kind == "url" else value
-        params = {"q": q}
+        params = {"query": q}
         data = self._request(f"/servers?{urllib.parse.urlencode(params)}")
         servers = data.get("servers", []) or []
         if kind == "url":
