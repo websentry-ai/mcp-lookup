@@ -13,10 +13,13 @@ SOURCES = ("all", "registry", "smithery", "pulsemcp")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(prog="mcp-lookup", description="Lookup MCP servers across the official MCP Registry and Smithery.")
+    parser = argparse.ArgumentParser(prog="mcp-lookup", description="Lookup MCP servers across the official MCP Registry, Smithery, and PulseMCP.")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Registry base URL.")
     parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="HTTP timeout in seconds.")
     parser.add_argument("--source", choices=SOURCES, default="all", help="Which source to query (default: all).")
+    parser.add_argument("--smithery-api-key", default=None, help="Smithery API key (Bearer token).")
+    parser.add_argument("--pulsemcp-api-key", default=None, help="PulseMCP API key (X-API-Key header).")
+    parser.add_argument("--pulsemcp-tenant-id", default=None, help="PulseMCP tenant ID (X-Tenant-ID header).")
 
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -39,13 +42,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
     agg = Aggregator(
         registry=RegistryClient(base_url=args.base_url, timeout=args.timeout),
-        smithery=SmitheryClient(timeout=args.timeout),
-        pulsemcp=PulseMCPClient(timeout=args.timeout),
+        smithery=SmitheryClient(timeout=args.timeout, api_key=args.smithery_api_key),
+        pulsemcp=PulseMCPClient(timeout=args.timeout, api_key=args.pulsemcp_api_key, tenant_id=args.pulsemcp_tenant_id),
     )
 
     try:
         if args.command == "search":
             results = agg.search(args.query, limit=args.limit, source=args.source)
+            _print_credential_warnings(agg)
             if args.with_icon:
                 for r in results:
                     r["icon_url"] = derive_icon_url(r)
@@ -58,6 +62,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "get":
             entry = agg.get(args.query, version=args.version, source=args.source, enrich=not args.no_enrich)
+            _print_credential_warnings(agg)
             if not entry:
                 print(f"No server found for: {args.query}", file=sys.stderr)
                 return 1
@@ -72,6 +77,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "icon":
             entry = agg.get(args.query, source=args.source)
+            _print_credential_warnings(agg)
             if not entry:
                 print(f"No server found for: {args.query}", file=sys.stderr)
                 return 1
@@ -85,6 +91,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     return 0
+
+
+def _print_credential_warnings(agg: "Aggregator") -> None:
+    """Print any credential-required warnings collected during the last request."""
+    for source, msg in agg.credential_warnings.items():
+        print(f"\n[{source}] ⚠  Credentials required: {msg}", file=sys.stderr)
 
 
 def _print_search(results: List[Dict[str, Any]]) -> None:

@@ -13,6 +13,14 @@ class RegistryError(Exception):
     pass
 
 
+class CredentialsRequiredError(RegistryError):
+    """Raised when a source requires authentication credentials that were not provided."""
+
+    def __init__(self, source: str, message: str):
+        super().__init__(message)
+        self.source = source
+
+
 class RegistryClient:
     def __init__(self, base_url: str = DEFAULT_BASE_URL, timeout: int = DEFAULT_TIMEOUT):
         self.base_url = base_url.rstrip("/")
